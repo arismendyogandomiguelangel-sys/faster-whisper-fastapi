@@ -1,7 +1,9 @@
 @echo off
 title TEOIGO - Reinicio Limpio
+REM Uso interno para debugging. El usuario final NO necesita ejecutar esto.
+REM El icono del escritorio creado por INSTALL_TEOIGO.bat es suficiente.
 echo ============================================================
-echo   TEOIGO - Reinicio Limpio
+echo   TEOIGO - Reinicio Limpio (DEBUG)
 echo ============================================================
 echo.
 

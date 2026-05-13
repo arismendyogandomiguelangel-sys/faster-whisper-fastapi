@@ -1,3 +1,4 @@
+# === Python ===
 .env
 __pycache__/
 *.pyc
@@ -8,5 +9,24 @@ build/
 .venv/
 venv/
 *.egg
+
+# === Whisper models cache ===
 .huggingface/
 whisper_models/
+
+# === Logs ===
+*.log
+teoigo.log
+
+# === IDE / Editor ===
+.kilo/
+.vscode/
+.idea/
+
+# === Generados por instalador ===
+Icono-Teoigo.ico
+
+# === Scripts de debug (no subir al repo) ===
+DIAGNOSTICO_TEOIGO.bat
+FIX_ANTIVIRUS.bat
+CLEANUP_AND_COMMIT.bat

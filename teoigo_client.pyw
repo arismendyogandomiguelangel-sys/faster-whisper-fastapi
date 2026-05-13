@@ -1,17 +1,18 @@
+# -*- coding: utf-8 -*-
 """
-TEOIGO — Cliente de Dictado por Voz para Windows v2.0
+TEOIGO — Cliente de Dictado por Voz para Windows v2.1
 =====================================================
 Herramienta del ecosistema ALiaNeD.
 
 Widget tipo pildora flotante con fondo transparente.
 Solo se ven el borde y las ondas reactivas.
-Icono en system tray para control rapido.
+Icono personalizado en system tray para control rapido.
 
 Uso:
-  Ctrl + Flecha Derecha  = Iniciar / Detener dictado
+  Ctrl + Flecha Derecha  = Encender microfono (iniciar dictado)
+  Ctrl + Flecha Izquierda = Apagar microfono (detener dictado)
   Ctrl + Shift + F12     = Salir
-  Click en tray icon     = Mostrar/Ocultar pildora
-  Doble-click tray icon  = Mostrar pildora
+  Doble-click en icono   = Mostrar/Ocultar pildora
 """
 
 import io
@@ -96,11 +97,19 @@ API_KEY = os.getenv(
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-SILENCE_TIMEOUT_SEC = 120     # 2 minutos sin hablar = auto-cierre
 SPEECH_THRESHOLD = 0.025      # Umbral RMS para detectar habla (mas alto para ignorar estatica)
 PAUSE_DURATION_SEC = 0.7       # Pausa de 0.7s = fin de frase (estandar industria)
 MIN_SPEECH_SEC = 0.3           # Minimo 0.3s de audio con habla para enviar
 POLL_INTERVAL_SEC = 0.1        # Frecuencia de revision del VAD
+
+# === Timeouts UX (requeridos por usuario) ===
+HIDE_PILL_AFTER_SILENCE_SEC = 180   # 3 min sin hablar -> ocultar pildora (sigue grabando)
+AUTO_MINIMIZE_UI_SEC = 300           # 5 min sin uso de UI -> minimizar pildora
+AUTO_SHUTDOWN_SEC = 600              # 10 min sin uso -> apagar app entera
+ACTIVITY_CHECK_INTERVAL_MS = 15000   # Revisar cada 15s
+
+# Ruta del icono personalizado
+ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Icono-Teoigo.png")
 
 # ============================================================================
 # COLORES ALiaNeD
@@ -206,8 +215,12 @@ class PillOverlay:
         else:
             border_color = "#444466"
 
+        # Fondo oscuro semi-opaco (NO usar TRANSPARENT_COLOR aqui,
+        # porque eso hace que los clics pasen a traves y no se pueda arrastrar)
+        BG_FILL = "#0a0a0a"
+
         self._draw_rounded_rect(2, 2, w - 2, h - 2, r,
-            fill=TRANSPARENT_COLOR, outline=border_color, width=2)
+            fill=BG_FILL, outline=border_color, width=2)
 
         bar_area_x = 12
         bar_area_w = w - 24
@@ -361,12 +374,13 @@ class PillOverlay:
 
 
 # ============================================================================
-# SYSTEM TRAY ICON
+# SYSTEM TRAY ICON — Usa el icono personalizado de TEOIGO
 # ============================================================================
 class TrayIcon:
     """Icono en la barra de tareas.
-    Click izquierdo = iniciar/detener dictado.
+    Doble-click = mostrar/ocultar pildora.
     Click derecho = menu (Salir).
+    Usa el icono personalizado Icono-Teoigo.png.
     """
 
     def __init__(self, overlay, client, on_exit_callback):
@@ -384,52 +398,61 @@ class TrayIcon:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
-    def _create_icon_image(self):
-        """Crea un icono con forma de micrófono."""
+    def _load_icon_image(self):
+        """Carga el icono personalizado desde PNG. Si no existe, genera fallback."""
+        try:
+            if os.path.exists(ICON_PATH):
+                img = Image.open(ICON_PATH).convert("RGBA")
+                # Redimensionar a tamano adecuado para tray icon
+                img = img.resize((64, 64), Image.LANCZOS)
+                log(f"Icono personalizado cargado desde {ICON_PATH}")
+                return img
+        except Exception as e:
+            log(f"WARN: No se pudo cargar icono personalizado: {e}")
+
+        # Fallback: icono dibujado a mano
+        return self._create_fallback_icon()
+
+    def _create_fallback_icon(self):
+        """Crea un icono con forma de microfono como fallback."""
         size = 64
         img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        
-        color = "#00bfff" # Cyan/Blue ALiaNeD
+
+        color = "#00bfff"
         bg_color = "#111111"
 
-        # Fondo circular para que destaque en cualquier tema (claro/oscuro)
         draw.ellipse([4, 4, 60, 60], fill=bg_color, outline=color, width=2)
-        
-        # Cápsula del micrófono (centro)
         draw.rounded_rectangle([24, 16, 40, 38], radius=8, fill=color)
-        
-        # Soporte en U (arco exterior)
         draw.arc([16, 20, 48, 46], start=0, end=180, fill=color, width=4)
-        
-        # Palo del soporte
         draw.line([32, 46, 32, 54], fill=color, width=4)
-        
-        # Base del soporte
         draw.line([22, 54, 42, 54], fill=color, width=4)
-        
+
         return img
 
     def _run(self):
         try:
-            image = self._create_icon_image()
+            image = self._load_icon_image()
             menu = pystray.Menu(
-                pystray.MenuItem("Mostrar/Ocultar Píldora", self._on_toggle, default=True),
+                pystray.MenuItem("Mostrar/Ocultar Pildora", self._on_toggle, default=True),
                 pystray.MenuItem("Dictar (Ctrl+Right)", self._on_dictate),
                 pystray.MenuItem("Salir", self._on_exit_click),
             )
-            self.icon = pystray.Icon("TEOIGO", image, "TEOIGO - Click para dictar", menu)
+            self.icon = pystray.Icon("TEOIGO", image, "TEOIGO - Doble-click para dictar", menu)
             self.icon.run()
         except Exception as e:
             log(f"Error en system tray: {e}")
 
     def _on_toggle(self, icon, item):
-        """Doble-click o click simple en tray: muestra/oculta la píldora."""
+        """Doble-click en tray: muestra/oculta la pildora."""
+        self.client.mark_activity()
         self.overlay.toggle_visibility()
 
     def _on_dictate(self, icon, item):
-        """Inicia/detiene dictado."""
-        threading.Thread(target=self.client.toggle_recording, daemon=True).start()
+        """Inicia dictado desde menu."""
+        self.client.mark_activity()
+        if not self.client.is_recording:
+            threading.Thread(target=self.client._start_recording, daemon=True).start()
 
     def _on_exit_click(self, icon, item):
         """Menu Salir: cierra la aplicacion."""
@@ -459,6 +482,8 @@ class TeoigoClient:
         self._silence_timer = None
         self._streaming_active = False
         self._streaming_thread = None
+        self._last_activity_time = time.time()  # Tracker para auto-minimize/shutdown
+        self._activity_timer = None
 
     # --- Thread-safe UI methods ---
     def _run_on_ui(self, fn):
@@ -479,14 +504,13 @@ class TeoigoClient:
     def _safe_show(self, state=None):
         self._run_on_ui(lambda: self.overlay.show(state))
 
-    # --- Recording control ---
-    def toggle_recording(self):
-        if self.is_recording:
-            self._stop_and_transcribe()
-        else:
-            self._start_recording()
+    def mark_activity(self):
+        """Marca que hubo actividad del usuario (hotkey, clic tray, voz)."""
+        self._last_activity_time = time.time()
 
+    # --- Recording control ---
     def _start_recording(self):
+        """Enciende el microfono (idempotente: si ya graba, no hace nada)."""
         with self._lock:
             if self.is_recording:
                 return
@@ -497,6 +521,7 @@ class TeoigoClient:
         self._last_speech_time = time.time()
         self._is_speaking = False
         self._pending_chunk_start = 0
+        self.mark_activity()
 
         def audio_callback(indata, frames, time_info, status):
             if not self.is_recording:
@@ -511,8 +536,12 @@ class TeoigoClient:
             if normalized > SPEECH_THRESHOLD:
                 self._last_sound_time = now
                 self._last_speech_time = now
+                self._last_activity_time = now  # voz = actividad
                 if not self._is_speaking:
                     self._is_speaking = True
+                # Re-mostrar pildora si estaba oculta por silencio pero sigue grabando
+                if self.is_recording and not self.overlay.is_visible():
+                    self._safe_show(PillOverlay.STATE_LISTENING)
             # Si hay silencio prolongado total, marcar no-speaking
             elif now - self._last_speech_time > PAUSE_DURATION_SEC:
                 self._is_speaking = False
@@ -523,6 +552,8 @@ class TeoigoClient:
                 dtype='int16', callback=audio_callback, blocksize=1024,
             )
             self.stream.start()
+            # Mostrar la pildora al empezar a grabar (si estaba oculta)
+            self._safe_show(PillOverlay.STATE_LISTENING)
             self._safe_set_state(PillOverlay.STATE_LISTENING)
             log("Grabando... Habla ahora.")
 
@@ -542,15 +573,56 @@ class TeoigoClient:
             self._safe_set_state(PillOverlay.STATE_ERROR, "mic error")
             self._safe_start_fade(5)
 
+    def _stop_and_transcribe(self):
+        """Apaga el microfono (idempotente: si no graba, no hace nada)."""
+        with self._lock:
+            if not self.is_recording:
+                return
+            self.is_recording = False
+        self.mark_activity()
+
+        # Detener streaming y silencio
+        self._streaming_active = False
+        self._run_on_ui(self._stop_silence_monitor)
+
+        log("Deteniendo grabacion...")
+
+        if self.stream:
+            try:
+                self.stream.stop()
+                self.stream.close()
+            except Exception:
+                pass
+            self.stream = None
+
+        if not self.audio_data:
+            log("No se grabo audio.")
+            self._safe_set_state(PillOverlay.STATE_IDLE)
+            self._safe_start_fade(3)
+            return
+
+        self._safe_set_state(PillOverlay.STATE_PROCESSING, "finalizando...")
+
+        # El streaming ya envio chunks parciales.
+        # Aqui enviamos SOLO lo que quede sin procesar (si hay).
+        # Para simplificar, mostramos estado final.
+        self._safe_set_state(PillOverlay.STATE_IDLE)
+        self._safe_start_fade(3)  # 3s y se oculta sola tras finalizar
+        log("Grabacion finalizada. Texto ya inyectado via streaming.")
+
     def _start_silence_monitor(self):
-        """Monitorea silencio y auto-detiene si pasan N segundos sin habla."""
+        """Monitorea silencio durante grabacion.
+        Si pasan HIDE_PILL_AFTER_SILENCE_SEC sin habla -> oculta la pildora
+        pero la grabacion sigue activa (no detiene transcripcion).
+        """
         def check_silence():
             if not self.is_recording:
                 return
             elapsed = time.time() - self._last_sound_time
-            if elapsed >= SILENCE_TIMEOUT_SEC:
-                log(f"Silencio detectado ({SILENCE_TIMEOUT_SEC}s). Auto-deteniendo...")
-                threading.Thread(target=self._stop_and_transcribe, daemon=True).start()
+            if elapsed >= HIDE_PILL_AFTER_SILENCE_SEC:
+                log(f"Silencio detectado ({HIDE_PILL_AFTER_SILENCE_SEC}s). Ocultando pildora (grabacion sigue activa).")
+                self._safe_hide()
+                # No detener grabacion — solo ocultar UI
                 return
             # Revisar cada 2 segundos
             self._silence_timer = self.overlay.root.after(2000, check_silence)
@@ -565,10 +637,43 @@ class TeoigoClient:
                 pass
             self._silence_timer = None
 
+    def start_activity_monitor(self):
+        """Monitorea inactividad para auto-minimizar y auto-shutdown."""
+        def check():
+            try:
+                now = time.time()
+                idle = now - self._last_activity_time
+
+                # 1) Auto-minimizar pildora si esta visible y sin grabar
+                if (not self.is_recording
+                        and self.overlay.is_visible()
+                        and idle >= AUTO_MINIMIZE_UI_SEC):
+                    log(f"Auto-minimize: {idle:.0f}s sin actividad de UI")
+                    self._safe_hide()
+
+                # 2) Auto-shutdown completo
+                if (not self.is_recording
+                        and idle >= AUTO_SHUTDOWN_SEC):
+                    log(f"Auto-shutdown: {idle:.0f}s sin uso. Cerrando TEOIGO.")
+                    if hasattr(main, '_tray') and main._tray:
+                        main._tray.stop()
+                    self.overlay.root.quit()
+                    os._exit(0)
+            except Exception as e:
+                log(f"activity_monitor error: {e}")
+
+            self._activity_timer = self.overlay.root.after(
+                ACTIVITY_CHECK_INTERVAL_MS, check
+            )
+
+        self._activity_timer = self.overlay.root.after(
+            ACTIVITY_CHECK_INTERVAL_MS, check
+        )
+
     # --- VAD Streaming: enviar cuando detecta pausa en el habla ---
     def _streaming_loop(self):
-        """Envía audio al detectar pausa en el habla (estilo industria).
-        
+        """Envia audio al detectar pausa en el habla (estilo industria).
+
         En vez de timer fijo, monitorea el VAD:
         - Cuando detecta habla, acumula audio
         - Cuando detecta pausa de ~0.7s, envia el chunk acumulado
@@ -576,7 +681,7 @@ class TeoigoClient:
         """
         last_chunk_index = 0
         was_speaking = False
-        
+
         while self._streaming_active and self.is_recording:
             time.sleep(POLL_INTERVAL_SEC)
             if not self.is_recording or not self._streaming_active:
@@ -594,7 +699,7 @@ class TeoigoClient:
             if was_speaking and not now_speaking:
                 # Pausa detectada despues de habla = fin de frase
                 should_send = True
-            
+
             was_speaking = now_speaking
 
             if not should_send:
@@ -630,7 +735,7 @@ class TeoigoClient:
                 log(f"[VAD] Error: {e}")
 
     def _transcribe_audio(self, audio_np):
-        """Envía audio al servidor y retorna el texto transcrito."""
+        """Envia audio al servidor y retorna el texto transcrito."""
         wav_buffer = io.BytesIO()
         with wave.open(wav_buffer, 'wb') as wf:
             wf.setnchannels(CHANNELS)
@@ -666,7 +771,7 @@ class TeoigoClient:
 
     def _inject_text_safe(self, text):
         """Inyecta texto en la ventana que tenga el foco (NO manipula foco).
-        
+
         La pildora tiene WS_EX_NOACTIVATE, asi que NUNCA roba el foco.
         keyboard.write() envia keystrokes via SendInput a la ventana activa.
         El texto va directamente a Word, Notepad, VS Code, etc.
@@ -674,20 +779,25 @@ class TeoigoClient:
         if not text:
             return
 
+        # Filtrar alucinaciones comunes de Whisper (ruido blanco / silencio)
+        lower_text = text.strip().lower()
+        alucinaciones = [
+            "gracias", "gracias.", "gracias!", "gracias...", "muchas gracias.", "muchas gracias",
+            "thank you.", "thank you", "suscribete", "subtitulos por la comunidad de amara.org",
+            "gracias por ver el video.", "gracias por ver el video", "gracias por ver el video.", "gracias por ver el video",
+            "gracias por ver.", "suscribete al canal", "suscribete al canal.", "suscribanse al canal"
+        ]
+
+        if lower_text in alucinaciones:
+            log(f"Ruido filtrado (alucinacion de Whisper): '{text}'")
+            return
+
         log(f"Inyectando ({len(text)} chars)...")
 
         # Agregar espacio al final para separar chunks
         text_with_space = text + " "
 
-        # Metodo 1: keyboard.write (nivel OS, SendInput)
-        try:
-            keyboard.write(text_with_space, delay=0.002)
-            log("[OK] via keyboard.write()")
-            return
-        except Exception as e:
-            log(f"keyboard.write fallo: {e}")
-
-        # Metodo 2: clipboard + Ctrl+V (fallback)
+        # Metodo 1: clipboard + Ctrl+V (Mejor compatibilidad para Word, Notepad, etc.)
         try:
             original = ""
             try:
@@ -696,9 +806,10 @@ class TeoigoClient:
                 pass
 
             pyperclip.copy(text_with_space)
-            time.sleep(0.1)
+            time.sleep(0.05)
+            # pyautogui aveces necesita un mini delay adicional en Windows
             pyautogui.hotkey('ctrl', 'v')
-            time.sleep(0.1)
+            time.sleep(0.05)
 
             try:
                 pyperclip.copy(original)
@@ -710,41 +821,13 @@ class TeoigoClient:
         except Exception as e:
             log(f"clipboard+Ctrl+V fallo: {e}")
 
-    def _stop_and_transcribe(self):
-        """Detiene grabacion y transcribe el audio restante."""
-        with self._lock:
-            if not self.is_recording:
-                return
-            self.is_recording = False
-
-        # Detener streaming y silencio
-        self._streaming_active = False
-        self._run_on_ui(self._stop_silence_monitor)
-
-        log("Deteniendo grabacion...")
-
-        if self.stream:
-            try:
-                self.stream.stop()
-                self.stream.close()
-            except Exception:
-                pass
-            self.stream = None
-
-        if not self.audio_data:
-            log("No se grabo audio.")
-            self._safe_set_state(PillOverlay.STATE_IDLE)
-            self._safe_start_fade(180)
+        # Metodo 2: keyboard.write (Fallback a nivel OS)
+        try:
+            keyboard.write(text_with_space, delay=0.002)
+            log("[OK] via keyboard.write()")
             return
-
-        self._safe_set_state(PillOverlay.STATE_PROCESSING, "finalizando...")
-
-        # El streaming ya envio chunks parciales.
-        # Aqui enviamos SOLO lo que quede sin procesar (si hay).
-        # Para simplificar, mostramos estado final.
-        self._safe_set_state(PillOverlay.STATE_IDLE)
-        self._safe_start_fade(180)
-        log("Grabacion finalizada. Texto ya inyectado via streaming.")
+        except Exception as e:
+            log(f"keyboard.write fallo: {e}")
 
 
 # ============================================================================
@@ -768,24 +851,35 @@ def main():
     client = TeoigoClient(overlay)
 
     print("=" * 56)
-    print("  TEOIGO v2.0 — Dictado por Voz ALiaNeD")
+    print("  TEOIGO v2.1 — Dictado por Voz ALiaNeD")
     print("=" * 56)
     print(f"  Servidor: {WHISPER_URL}")
     print(f"  API Key:  {'*' * max(0,len(API_KEY)-4)}{API_KEY[-4:]}")
     print(f"  Log:      {LOG_FILE}")
     print(f"  Tray:     {'SI' if HAS_TRAY else 'NO (pip install pystray Pillow)'}")
     print()
-    print("  Ctrl+Flecha Derecha = Dictar")
-    print("  Ctrl+Shift+F12     = Salir")
-    print(f"  Silencio auto-stop = {SILENCE_TIMEOUT_SEC}s")
-    print(f"  VAD pausa frase    = {PAUSE_DURATION_SEC}s")
+    print("  Ctrl+Flecha Derecha  = Encender microfono")
+    print("  Ctrl+Flecha Izquierda = Apagar microfono")
+    print("  Ctrl+Shift+F12       = Salir")
+    print(f"  Ocultar por silencio = {HIDE_PILL_AFTER_SILENCE_SEC}s")
+    print(f"  Auto-minimize UI     = {AUTO_MINIMIZE_UI_SEC}s")
+    print(f"  Auto-shutdown        = {AUTO_SHUTDOWN_SEC}s")
     print("=" * 56)
     print("  [OK] Listo. Esperando tu voz...")
-    print("  (Click en icono de tray o Ctrl+Right para dictar)")
+    print("  (Doble-click en icono de tray o Ctrl+Right para dictar)")
     print()
 
-    def on_hotkey():
-        threading.Thread(target=client.toggle_recording, daemon=True).start()
+    def on_hotkey_start():
+        """Ctrl+Right = encender microfono (idempotente)."""
+        client.mark_activity()
+        if not client.is_recording:
+            threading.Thread(target=client._start_recording, daemon=True).start()
+
+    def on_hotkey_stop():
+        """Ctrl+Left = apagar microfono (idempotente)."""
+        client.mark_activity()
+        if client.is_recording:
+            threading.Thread(target=client._stop_and_transcribe, daemon=True).start()
 
     def on_exit():
         log("Cerrando...")
@@ -794,16 +888,21 @@ def main():
         overlay.root.quit()
         os._exit(0)
 
-    # Hotkeys SIN suppress para no robar Ctrl+Right de otras apps
-    keyboard.add_hotkey('ctrl+right', on_hotkey, suppress=False)
+    # Hotkeys SIN suppress para no robar combinaciones de otras apps
+    keyboard.add_hotkey('ctrl+right', on_hotkey_start, suppress=False)
+    keyboard.add_hotkey('ctrl+left', on_hotkey_stop, suppress=False)
     keyboard.add_hotkey('ctrl+shift+f12', on_exit, suppress=False)
 
-    # System Tray — click = iniciar/detener dictado
+    # System Tray — doble-click = mostrar/ocultar pildora
     main._tray = TrayIcon(overlay, client, on_exit)
 
-    # Mostrar brevemente al iniciar
-    overlay.show(PillOverlay.STATE_IDLE)
-    overlay.start_fade_timer(180)
+    # Arranque silencioso: TEOIGO queda en bandeja, listo para dictar.
+    # El usuario hace doble-click en el icono de bandeja para mostrar la pildora,
+    # o presiona Ctrl+Right para empezar a dictar directamente.
+    log("TEOIGO listo en bandeja. Ctrl+Right=dictar, Ctrl+Left=parar.")
+
+    # Monitor de inactividad (auto-minimize + auto-shutdown)
+    client.start_activity_monitor()
 
     overlay.root.mainloop()
 

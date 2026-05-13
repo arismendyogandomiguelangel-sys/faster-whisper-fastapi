@@ -16,32 +16,35 @@ https://teoigo.alianed.com
 
 El cliente de escritorio te permite dictar texto usando tu voz en **cualquier aplicación** (Word, Excel, VS Code, Chrome, Antigravity, etc.).
 
-### Instalación rápida
+### Instalación (cero terminal)
 
-```bash
-# 1. Doble clic en INSTALL_CLIENT.bat
-#    o manualmente:
-pip install -r client_requirements.txt
-```
+1. **Doble-click en `INSTALL_TEOIGO.bat`**. Esto:
+   - Instala las dependencias (keyboard, sounddevice, pystray, etc.)
+   - Crea el icono "TEOIGO Dictado" en el escritorio
+   - Configura inicio automático con Windows
 
-### Uso
-
-```bash
-# Ejecutar el cliente (se queda en segundo plano)
-pythonw teoigo_client.pyw
-```
+### Uso diario
 
 | Atajo | Acción |
-|-------|--------|
-| `Ctrl + Flecha Derecha` | Iniciar / Detener grabación |
+|---|---|
+| `Ctrl + Flecha Derecha` | Encender micrófono y empezar a dictar |
+| `Ctrl + Flecha Izquierda` | Apagar micrófono |
+| Doble-click en icono de bandeja | Mostrar / ocultar la píldora |
 | `Ctrl + Shift + F12` | Cerrar TEOIGO |
 
+### Comportamiento automático
+- Si pasan **3 min sin que hables** durante una grabación → la píldora se oculta (sigue grabando si vuelves a hablar).
+- Si pasan **5 min sin que uses la UI** → la píldora se minimiza sola a la bandeja.
+- Si pasan **10 min sin uso** → TEOIGO se apaga solo.
+
 ### Flujo
-1. Ejecutas `teoigo_client.pyw` (se queda en fondo)
+1. Doble-click en el icono del escritorio → TEOIGO arranca minimizado en bandeja
 2. Posicionas el cursor donde quieras escribir (Word, Chrome, etc.)
-3. Presionas **Ctrl + Flecha Derecha** → aparece notificación "Grabando..."
-4. Hablas lo que quieras dictar
-5. Presionas **Ctrl + Flecha Derecha** de nuevo → el texto se pega automáticamente
+3. Presionas **Ctrl + Flecha Derecha** → píldora azul con ondas de voz
+4. Hablas — el texto aparece automáticamente en la app activa
+5. Presionas **Ctrl + Flecha Izquierda** para apagar el micrófono
+
+> **Sin terminal nunca más.** Solo usas el icono del escritorio o el de la bandeja.
 
 ### Configuración
 
@@ -131,7 +134,7 @@ curl -X POST \
 │                                                  │
 │  teoigo_client.pyw                                │
 │  │                                                │
-│  ├─ Escucha Ctrl+Flecha Derecha (global)          │
+│  ├─ Escucha Ctrl+Right (graba) / Ctrl+Left (para)          │
 │  ├─ Graba audio del micrófono                     │
 │  ├─ Envía audio a teoigo.alianed.com ────────────┐ │
 │  ├─ Recibe texto transcrito   ◄────────────────┘ │
