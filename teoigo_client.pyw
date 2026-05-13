@@ -91,13 +91,13 @@ WHISPER_URL = os.getenv(
 )
 API_KEY = os.getenv(
     "TEOIGO_API_KEY",
-    "DIosesmiVozyEscudo_!321"
+    "DIosesmiVozyEscudoM321"
 )
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
 SILENCE_TIMEOUT_SEC = 120     # 2 minutos sin hablar = auto-cierre
-SPEECH_THRESHOLD = 0.015      # Umbral RMS para detectar habla
+SPEECH_THRESHOLD = 0.025      # Umbral RMS para detectar habla (mas alto para ignorar estatica)
 PAUSE_DURATION_SEC = 0.7       # Pausa de 0.7s = fin de frase (estandar industria)
 MIN_SPEECH_SEC = 0.3           # Minimo 0.3s de audio con habla para enviar
 POLL_INTERVAL_SEC = 0.1        # Frecuencia de revision del VAD
@@ -208,8 +208,6 @@ class PillOverlay:
 
         self._draw_rounded_rect(2, 2, w - 2, h - 2, r,
             fill=TRANSPARENT_COLOR, outline=border_color, width=2)
-        self._draw_rounded_rect(4, 4, w - 4, h - 4, r - 2,
-            fill="#0a0a15", outline="", width=0)
 
         bar_area_x = 12
         bar_area_w = w - 24
@@ -359,7 +357,7 @@ class PillOverlay:
             self.hide()
         else:
             self.show(self.STATE_IDLE)
-            self.start_fade_timer(8)
+            self.start_fade_timer(180)
 
 
 # ============================================================================
@@ -387,23 +385,37 @@ class TrayIcon:
         self._thread.start()
 
     def _create_icon_image(self):
-        """Crea un icono simple con los colores ALiaNeD."""
+        """Crea un icono con forma de micrófono."""
         size = 64
         img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(img)
-        draw.ellipse([2, 2, size - 2, size - 2], fill="#ff007f", outline="#0a0a15", width=2)
-        bar_positions = [16, 24, 32, 40, 48]
-        bar_heights = [12, 20, 28, 20, 12]
-        for x, h in zip(bar_positions, bar_heights):
-            y_top = (size - h) // 2
-            draw.rectangle([x - 2, y_top, x + 2, y_top + h], fill="#ffffff")
+        
+        color = "#00bfff" # Cyan/Blue ALiaNeD
+        bg_color = "#111111"
+
+        # Fondo circular para que destaque en cualquier tema (claro/oscuro)
+        draw.ellipse([4, 4, 60, 60], fill=bg_color, outline=color, width=2)
+        
+        # Cápsula del micrófono (centro)
+        draw.rounded_rectangle([24, 16, 40, 38], radius=8, fill=color)
+        
+        # Soporte en U (arco exterior)
+        draw.arc([16, 20, 48, 46], start=0, end=180, fill=color, width=4)
+        
+        # Palo del soporte
+        draw.line([32, 46, 32, 54], fill=color, width=4)
+        
+        # Base del soporte
+        draw.line([22, 54, 42, 54], fill=color, width=4)
+        
         return img
 
     def _run(self):
         try:
             image = self._create_icon_image()
             menu = pystray.Menu(
-                pystray.MenuItem("Dictar (Ctrl+Right)", self._on_dictate, default=True),
+                pystray.MenuItem("Mostrar/Ocultar Píldora", self._on_toggle, default=True),
+                pystray.MenuItem("Dictar (Ctrl+Right)", self._on_dictate),
                 pystray.MenuItem("Salir", self._on_exit_click),
             )
             self.icon = pystray.Icon("TEOIGO", image, "TEOIGO - Click para dictar", menu)
@@ -411,8 +423,12 @@ class TrayIcon:
         except Exception as e:
             log(f"Error en system tray: {e}")
 
+    def _on_toggle(self, icon, item):
+        """Doble-click o click simple en tray: muestra/oculta la píldora."""
+        self.overlay.toggle_visibility()
+
     def _on_dictate(self, icon, item):
-        """Click izquierdo: iniciar/detener dictado (igual que Ctrl+Right)."""
+        """Inicia/detiene dictado."""
         threading.Thread(target=self.client.toggle_recording, daemon=True).start()
 
     def _on_exit_click(self, icon, item):
@@ -582,6 +598,14 @@ class TeoigoClient:
             was_speaking = now_speaking
 
             if not should_send:
+                # Fallback de seguridad: si la frase dura mas de 4 segundos,
+                # enviar de todos modos para que el texto aparezca fluido
+                # incluso si hay ruido de fondo constante.
+                chunk_duration_temp = (current_len - last_chunk_index) * 1024 / SAMPLE_RATE
+                if chunk_duration_temp >= 4.0:
+                    should_send = True
+
+            if not should_send:
                 continue
 
             # Tomar todo el audio desde el ultimo envio
@@ -710,7 +734,7 @@ class TeoigoClient:
         if not self.audio_data:
             log("No se grabo audio.")
             self._safe_set_state(PillOverlay.STATE_IDLE)
-            self._safe_start_fade(4)
+            self._safe_start_fade(180)
             return
 
         self._safe_set_state(PillOverlay.STATE_PROCESSING, "finalizando...")
@@ -719,7 +743,7 @@ class TeoigoClient:
         # Aqui enviamos SOLO lo que quede sin procesar (si hay).
         # Para simplificar, mostramos estado final.
         self._safe_set_state(PillOverlay.STATE_IDLE)
-        self._safe_start_fade(5)
+        self._safe_start_fade(180)
         log("Grabacion finalizada. Texto ya inyectado via streaming.")
 
 
@@ -779,7 +803,7 @@ def main():
 
     # Mostrar brevemente al iniciar
     overlay.show(PillOverlay.STATE_IDLE)
-    overlay.start_fade_timer(3)
+    overlay.start_fade_timer(180)
 
     overlay.root.mainloop()
 
