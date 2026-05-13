@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ALiaNeD Voice Assistant (Whisper API)</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            height: 100vh;
+            overflow: hidden;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: white;
+        }
+        #settings {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            padding: 15px;
+            border-radius: 8px;
+            z-index: 10000;
+            display: flex;
+            gap: 10px;
+            backdrop-filter: blur(5px);
+        }
+        #settings input {
+            padding: 8px;
+            border-radius: 4px;
+            border: none;
+            outline: none;
+        }
+        #settings button {
+            padding: 8px 15px;
+            border-radius: 4px;
+            border: none;
+            background: #ff007f;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        #app {
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 20px;
+        }
+        #output {
+            position: fixed;
+            top: 100px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 600px;
+            width: 80%;
+            color: white;
+            z-index: 1000;
+            font-size: 18px;
+            min-height: 50px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            border: 1px solid rgba(255,255,255,0.1);
+            transition: opacity 0.3s;
+        }
+
+        #mic-widget {
+            position: fixed;
+            bottom: 40px;
+            right: 40px;
+            width: 120px; 
+            height: 120px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            z-index: 9999;
+            user-select: none;
+        }
+
+        #mic-icon {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 50%;
+            transition: all 0.3s ease;
+            filter: drop-shadow(0 4px 10px rgba(0,0,0,0.4));
+            z-index: 2;
+        }
+
+        #mic-widget:hover {
+            transform: scale(1.05);
+        }
+
+        #mic-widget.talking #mic-icon {
+            animation: pulse-glow 1.5s infinite;
+        }
+
+        .waves-container {
+            position: absolute;
+            width: 150%;
+            height: 150%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            opacity: 0;
+            transition: opacity 0.2s ease-in;
+            pointer-events: none;
+            z-index: 1; 
+        }
+
+        #mic-widget.talking .waves-container {
+            opacity: 1;
+        }
+
+        .wave {
+            width: 5px;
+            height: 10px;
+            background: linear-gradient(to top, #ff007f, #ff8c00, #40e0d0, #0044ff);
+            border-radius: 4px;
+            animation: sound-wave 0.4s infinite ease-in-out alternate;
+        }
+
+        .wave:nth-child(1) { animation-delay: 0.1s; height: 20px; }
+        .wave:nth-child(2) { animation-delay: 0.2s; height: 40px; }
+        .wave:nth-child(3) { animation-delay: 0.0s; height: 60px; }
+        .wave:nth-child(4) { animation-delay: 0.3s; height: 40px; }
+        .wave:nth-child(5) { animation-delay: 0.1s; height: 20px; }
+
+        @keyframes sound-wave {
+            0% { transform: scaleY(0.4); opacity: 0.6; }
+            100% { transform: scaleY(1.4); opacity: 1; }
+        }
+
+        @keyframes pulse-glow {
+            0% { filter: drop-shadow(0 0 10px rgba(255,0,127,0.5)); transform: scale(1); }
+            50% { filter: drop-shadow(0 0 25px rgba(0,191,255,0.8)); transform: scale(1.03); }
+            100% { filter: drop-shadow(0 0 10px rgba(255,0,127,0.5)); transform: scale(1); }
+        }
+
+        .hidden { 
+            opacity: 0 !important;
+            pointer-events: none;
+            transform: translateY(30px) scale(0.8) !important;
+        }
+    </style>
+</head>
+<body>
+    <div id="settings">
+        <input type="password" id="api-key" placeholder="Tu API KEY (DIosesmiVozy...)">
+        <button onclick="saveKey()">Guardar API Key</button>
+    </div>
+
+    <div id="app">
+        <h1>Interfaz Whisper ALiaNeD</h1>
+        <p>Presiona <strong>Ctrl + Flecha Izquierda</strong> para empezar a grabar el audio.</p>
+        <p>Vuelve a presionar <strong>Ctrl + Flecha Izquierda</strong> (o haz clic en el logo) para detener y enviar el audio a tu propio servidor Whisper.</p>
+    </div>
+    
+    <div id="output" class="hidden">Conectando...</div>
+
+    <div id="mic-widget" class="hidden" title="Haz clic o Ctrl+Izq para detener">
+        <div class="waves-container">
+            <div class="wave"></div>
+            <div class="wave"></div>
+            <div class="wave"></div>
+            <div class="wave"></div>
+            <div class="wave"></div>
+        </div>
+        <!-- En Dokploy se servirá desde /static/alianed_icon.webp -->
+        <img id="mic-icon" src="/static/alianed_icon.webp" alt="ALiaNeD" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 100 100\'><circle cx=\'50\' cy=\'50\' r=\'50\' fill=\'%23667eea\'/><text x=\'50\' y=\'65\' font-size=\'40\' text-anchor=\'middle\' fill=\'white\'>A</text></svg>'">
+    </div>
+
+    <script>
+        function saveKey() {
+            const key = document.getElementById('api-key').value;
+            localStorage.setItem('whisper_api_key', key);
+            alert('API Key guardada localmente.');
+        }
+        document.getElementById('api-key').value = localStorage.getItem('whisper_api_key') || '';
+
+        class WhisperWidget {
+            constructor() {
+                this.widget = document.getElementById('mic-widget');
+                this.output = document.getElementById('output');
+                this.isVisible = false;
+                this.isRecording = false;
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                
+                this.initAudio();
+                this.initHotkey();
+                this.initDrag();
+            }
+
+            async initAudio() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.mediaRecorder = new MediaRecorder(stream);
+                    
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        if (event.data.size > 0) {
+                            this.audioChunks.push(event.data);
+                        }
+                    };
+
+                    this.mediaRecorder.onstart = () => {
+                        this.isRecording = true;
+                        this.widget.classList.add('talking');
+                        this.output.textContent = "🎙️ Grabando... Habla ahora.";
+                    };
+
+                    this.mediaRecorder.onstop = async () => {
+                        this.isRecording = false;
+                        this.widget.classList.remove('talking');
+                        this.output.textContent = "⏳ Enviando a Whisper (teoigo.alianed.com)...";
+                        
+                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                        this.audioChunks = [];
+                        await this.sendToWhisper(audioBlob);
+                        
+                        setTimeout(() => this.hideWidget(), 8000); // Ocultar después de 8s
+                    };
+                } catch (err) {
+                    console.error("No se pudo acceder al micrófono:", err);
+                    alert("Acepta los permisos de micrófono para usar esta función.");
+                }
+            }
+
+            async sendToWhisper(audioBlob) {
+                const apiKey = localStorage.getItem('whisper_api_key');
+                if (!apiKey) {
+                    this.output.textContent = "❌ Error: Configura tu API KEY arriba a la derecha primero.";
+                    return;
+                }
+
+                const formData = new FormData();
+                formData.append('audio', audioBlob, 'audio.webm');
+
+                try {
+                    // LLamada a tu backend Dokploy
+                    const response = await fetch('/v2/transcribe', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${apiKey}`,
+                            'accept': 'application/json'
+                        },
+                        body: formData
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Error ${response.status}: Revisa tu API KEY`);
+                    }
+
+                    const text = await response.json();
+                    this.output.textContent = `📝 Transcripción: "${text}"`;
+                } catch (err) {
+                    this.output.textContent = `❌ Falló la conexión: ${err.message}`;
+                }
+            }
+
+            initHotkey() {
+                document.addEventListener('keydown', (e) => {
+                    if (e.ctrlKey && e.code === 'ArrowLeft') {
+                        e.preventDefault();
+                        this.toggleRecording();
+                    }
+                });
+            }
+
+            initDrag() {
+                let isDragging = false;
+                let initialX, initialY, xOffset = 0, yOffset = 0;
+
+                this.widget.addEventListener('mousedown', (e) => {
+                    initialX = e.clientX - xOffset;
+                    initialY = e.clientY - yOffset;
+                    if (e.target === this.widget || e.target.id === 'mic-icon') {
+                        isDragging = true;
+                    }
+                });
+
+                document.addEventListener('mousemove', (e) => {
+                    if (isDragging) {
+                        e.preventDefault();
+                        const currentX = e.clientX - initialX;
+                        const currentY = e.clientY - initialY;
+                        xOffset = currentX;
+                        yOffset = currentY;
+
+                        this.widget.style.transform = `translate(${currentX}px, ${currentY}px)`;
+                        this.widget.style.bottom = 'auto';
+                        this.widget.style.right = 'auto';
+                    }
+                });
+
+                this.widget.addEventListener('mouseup', (e) => { 
+                    if (!isDragging) {
+                        // Si no arrastró, fue un clic
+                        if (this.isRecording) this.toggleRecording();
+                    }
+                    isDragging = false; 
+                });
+            }
+
+            toggleRecording() {
+                if (!this.mediaRecorder) return;
+                
+                if (this.isRecording) {
+                    this.mediaRecorder.stop();
+                } else {
+                    this.showWidget();
+                    this.audioChunks = [];
+                    this.mediaRecorder.start();
+                }
+            }
+
+            showWidget() {
+                this.widget.classList.remove('hidden');
+                this.output.classList.remove('hidden');
+                this.isVisible = true;
+            }
+
+            hideWidget() {
+                this.widget.classList.add('hidden');
+                this.output.classList.add('hidden');
+                this.isVisible = false;
+            }
+        }
+
+        window.onload = () => new WhisperWidget();
+    </script>
+</body>
+</html>

@@ -2,7 +2,7 @@
 Aplicacion principal FastAPI para faster-whisper.
 
 Endpoints:
-- GET  /           -> Redirige a /docs (si no esta desactivado)
+- GET  /           -> Retorna la UI estatica de Whisper ALiaNeD
 - GET  /health     -> Health check (PUBLICO, sin auth)
 - POST /transcribe -> Transcripcion legacy (protegido con API key, deprecated)
 - POST /v2/transcribe -> Transcripcion v2 (protegido con API key, texto plano)
@@ -20,7 +20,8 @@ import uvicorn
 from fastapi import FastAPI, Response, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from depends import API_KEY, DISABLE_DOCS, PORT, lock, model
@@ -54,6 +55,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Servir archivos estaticos (UI y Logo)
+# Verificamos si existe el directorio para no romper en desarrollo si falta
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 # Incluir router v2
 app.include_router(v2_router)
 
@@ -76,14 +83,17 @@ def verify_api_key(credentials: HTTPAuthorizationCredentials = security) -> str:
 
 # --- Endpoints ---
 
-
 @app.get("/", include_in_schema=False)
-def docs():
-    """Redirige a la documentacion Swagger (si esta habilitada)."""
+def index():
+    """Retorna la UI web si existe, si no, redirige a /docs."""
+    index_file = os.path.join(static_dir, "index.html")
+    if os.path.isfile(index_file):
+        return FileResponse(index_file)
+    
     if DISABLE_DOCS:
         return JSONResponse(
             status_code=status.HTTP_404_NOT_FOUND,
-            content={"detail": "Documentation disabled"},
+            content={"detail": "Documentation disabled and UI not found"},
         )
     return RedirectResponse(url="/docs")
 
