@@ -1,23 +1,20 @@
 services:
-  faster-whisper:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  whisper:
+    build: .
+    container_name: faster-whisper-fastapi
+    env_file:
+      - .env
     ports:
-      - ${PORT:-8000}:8000
-    env_file: .env
-    environment:
-      - PORT=8000
-      - MODEL_SIZE=${MODEL_SIZE}
-    restart: unless-stopped
-    healthcheck:
-      test: curl --fail http://localhost:8000/health
-      interval: 30m
-      timeout: 30s
-      retries: 5
-      start_period: 5m
+      - "8080:8080"
     volumes:
-      - whisper_models:/home/app/app/whisper_models/
-  
+      - whisper-cache:/home/appuser/.cache/huggingface
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+    restart: unless-stopped
+
 volumes:
-  whisper_models:
+  whisper-cache:

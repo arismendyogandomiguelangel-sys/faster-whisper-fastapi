@@ -1,62 +1,147 @@
-# FastAPI wrapper for [Faster-Whisper](https://github.com/SYSTRAN/faster-whisper)
+# Faster Whisper API - Producción
 
-## Versions
+API de transcripción de audio usando [faster-whisper](https://github.com/SYSTRAN/faster-whisper) con FastAPI, protegida por API key y lista para desplegar en Dokploy.
 
-- `1.1.0`
-  - add v2 router with simple text response
-  - add asyncio lock for queening requests
-  - default router are deprecated
-- `1.0.0`
-  - `/transcribe` router
+## Subdominio
 
-## Requirements
-
-- Python3.8 +
-- 1.4GB for docker image
-- 500MB+ RAM for docker
-
-## Installation
-
-1. __Set variables__.
-    Create `.env` file with variables:
-
-    ```shell
-    MODEL_SIZE="tiny"
-    PORT="8080"
-    ```
-
-2. __Run container__
-    Simply use `docker-compose` for run container
-
-    ```shell
-    docker-compose up -d
-    ```
-
-3. Wait for some time while whisper model are downloading.
-
-## Usage
-
-### Endpoints
-
-- http://127.0.0.1:8080/v2/transcribe - post audio endpoint
-- http://127.0.0.1:8080/transcribe - __deprecated__ - post audio endpoint
-- http://127.0.0.1:8080/health - healthcheck endpoint
-- http://127.0.0.1:8080/docs - fastapi auto documentation
-
-### examples
-
-#### post example
-
-```shell
-curl -X 'POST' \
-  'http://127.0.0.1:8080/v2/transcribe' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: multipart/form-data' \
-  -F 'audio=@voice.ogg;type=video/ogg'
+```
+https://teoigo.alianed.com
 ```
 
-#### response example
+## Variables de entorno
 
+Crea un archivo `.env` basado en `.env.example`:
+
+```bash
+cp .env.example .env
+```
+
+Edita `.env` con tus valores:
+
+```env
+MODEL_SIZE=small
+PORT=8080
+API_KEY=tu_clave_super_larga_y_random
+DEVICE=cpu
+COMPUTE_TYPE=int8
+ALLOWED_ORIGINS=*
+DISABLE_DOCS=false
+```
+
+> **IMPORTANTE**: Nunca subas el archivo `.env` al repositorio. Solo `.env.example` está versionado.
+
+## Ejecución local
+
+```bash
+# Construir y levantar
+docker compose up --build -d
+
+# Ver logs
+docker compose logs -f
+
+# Detener
+docker compose down
+```
+
+## Desplegar en Dokploy
+
+1. En Dokploy, crea un nuevo servicio tipo **Docker Compose**
+2. Sube el `docker-compose.yml` o apunta al repo
+3. Configura las variables de entorno en el panel de Dokploy:
+   - `MODEL_SIZE=small`
+   - `PORT=8080`
+   - `API_KEY=<tu-clave-secreta>`
+   - `DEVICE=cpu`
+   - `COMPUTE_TYPE=int8`
+   - `ALLOWED_ORIGINS=*`
+4. Configura el dominio: `teoigo.alianed.com`
+5. Puerto del contenedor: `8080`
+6. Haz deploy
+
+## Consumo de la API
+
+### Health check (público)
+
+```bash
+curl https://teoigo.alianed.com/health
+```
+
+Respuesta:
 ```json
-"transcribed text"
+{"status": "ok", "model": "small"}
 ```
+
+### Transcripción (protegido)
+
+```bash
+curl -X POST \
+  'https://teoigo.alianed.com/v2/transcribe' \
+  -H 'Authorization: Bearer TU_API_KEY' \
+  -H 'accept: application/json' \
+  -F 'audio=@tu_audio.ogg;type=audio/ogg'
+```
+
+Respuesta:
+```json
+"texto transcrito del audio"
+```
+
+### Error si no envías API key
+
+```bash
+curl -X POST 'https://teoigo.alianed.com/v2/transcribe' \
+  -F 'audio=@tu_audio.ogg'
+```
+
+Respuesta:
+```json
+{"detail": "Not authenticated"}
+```
+
+Status: `401 Unauthorized`
+
+## Endpoints
+
+| Método | Endpoint | Auth | Descripción |
+|--------|----------|------|-------------|
+| GET | `/health` | No | Health check para Dokploy |
+| POST | `/v2/transcribe` | Sí | Transcripción (texto plano) |
+| POST | `/transcribe` | Sí | Transcripción legacy (deprecated) |
+| GET | `/docs` | No | Swagger UI (desactivable con `DISABLE_DOCS=true`) |
+
+## Arquitectura
+
+```
+┌─────────────────────────────────────────┐
+│           Dokploy / Docker               │
+│  ┌───────────────────────────────────┐   │
+│  │    faster-whisper-fastapi         │   │
+│  │                                   │   │
+│  │  /health        -> PUBLICO        │   │
+│  │  /v2/transcribe -> Bearer API_KEY │   │
+│  │  /transcribe    -> Bearer API_KEY │   │
+│  │                                   │   │
+│  │  User: appuser (no root)          │   │
+│  │  Port: 8080                       │   │
+│  └───────────────────────────────────┘   │
+│                                          │
+│  Volume: whisper-cache -> HuggingFace    │
+└─────────────────────────────────────────┘
+```
+
+## Seguridad
+
+- ✅ Usuario no root (`appuser`)
+- ✅ API key por Bearer token
+- ✅ `/health` público solo para health checks
+- ✅ CORS configurable
+- ✅ Docs desactivables en producción
+- ✅ Volumen persistente para caché de modelos
+- ✅ Healthcheck para monitoreo
+
+## Notas
+
+- El modelo se descarga automáticamente al primer arranque
+- El volumen `whisper-cache` persiste el modelo entre redeploys
+- `COMPUTE_TYPE=int8` reduce consumo de RAM y es compatible con CPU
+- `MODEL_SIZE=small` ~500MB RAM, buena relación calidad/rendimiento

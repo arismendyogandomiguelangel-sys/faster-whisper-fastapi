@@ -1,23 +1,55 @@
-import os
-from faster_whisper import WhisperModel
-from dotenv import load_dotenv
+"""
+Dependencias globales del servicio Whisper.
+
+Este módulo carga el modelo faster-whisper una sola vez al arrancar
+y expone el lock asyncio para serializar las peticiones de transcripcion.
+"""
+
 import asyncio
+import logging
+import os
 
-lock = asyncio.Lock()
+from dotenv import load_dotenv
+from faster_whisper import WhisperModel
 
+# Cargar variables de entorno desde .env
 load_dotenv()
 
+# --- Configuracion del modelo ---
+MODEL_SIZE = os.getenv("MODEL_SIZE", "small")
+DEVICE = os.getenv("DEVICE", "cpu")
+COMPUTE_TYPE = os.getenv("COMPUTE_TYPE", "int8")
 
-models_dir = os.path.join(os.path.dirname(__file__), "whisper_models/")
-if not os.path.exists(models_dir):
-    os.mkdir(models_dir)
+# Validar que API_KEY este definida
+API_KEY = os.getenv("API_KEY")
+if not API_KEY:
+    raise RuntimeError(
+        "La variable de entorno API_KEY no esta definida. "
+        "Crea un archivo .env basado en .env.example con tu clave secreta."
+    )
 
-model_size = os.getenv("MODEL_SIZE", "tiny")
+# Puerto para uvicorn
+PORT = int(os.getenv("PORT", "8080"))
+
+# Flag para desactivar docs en produccion
+DISABLE_DOCS = os.getenv("DISABLE_DOCS", "false").lower() == "true"
+
+# --- Inicializar modelo ---
+logger = logging.getLogger(__name__)
+logger.info(
+    "Cargando modelo Whisper: size=%s, device=%s, compute_type=%s",
+    MODEL_SIZE,
+    DEVICE,
+    COMPUTE_TYPE,
+)
 
 model = WhisperModel(
-    model_size_or_path=model_size,
-    device="cpu",
-    compute_type="int8",
-    download_root=models_dir,
-    local_files_only=False,
+    model_size_or_path=MODEL_SIZE,
+    device=DEVICE,
+    compute_type=COMPUTE_TYPE,
 )
+
+logger.info("Modelo Whisper cargado correctamente.")
+
+# --- Lock para serializar peticiones (evita saturacion de memoria) ---
+lock = asyncio.Lock()

@@ -1,18 +1,34 @@
-FROM python:3.12-slim-bullseye
+FROM python:3.11-slim
 
-RUN apt-get update && apt-get install ffmpeg -y
+# Variables de entorno para Python
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/home/appuser/.cache/huggingface
 
-ENV APP_HOME=/home/app/app/
+# Instalar dependencias del sistema
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p ${APP_HOME}
+WORKDIR /app
 
-WORKDIR ${APP_HOME}
-
+# Instalar dependencias de Python
 COPY requirements.txt .
-RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-COPY src .
+# Copiar codigo fuente
+COPY src/ ./src/
 
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+# Crear usuario no root y ajustar permisos
+RUN useradd -m appuser && \
+    mkdir -p /home/appuser/.cache/huggingface && \
+    chown -R appuser:appuser /app /home/appuser
 
-EXPOSE 8000
+USER appuser
+
+EXPOSE 8080
+
+CMD ["sh", "-c", "cd src && uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080} --workers 1"]
