@@ -95,6 +95,10 @@ API_KEY = os.getenv(
     "DIosesmiVozyEscudoM321"
 )
 
+# API Keys de Groq (Predeterminado y Fallback)
+GROQ_API_KEY_1 = os.getenv("GROQ_API_KEY", "")
+GROQ_API_KEY_2 = os.getenv("GROQ_API_KEY_FALLBACK", "")
+
 SAMPLE_RATE = 16000
 CHANNELS = 1
 SPEECH_THRESHOLD = 0.025      # Umbral RMS para detectar habla (mas alto para ignorar estatica)
@@ -735,38 +739,68 @@ class TeoigoClient:
                 log(f"[VAD] Error: {e}")
 
     def _transcribe_audio(self, audio_np):
-        """Envia audio al servidor y retorna el texto transcrito."""
+        """Envia audio a Groq (predeterminado) o al servidor de respaldo y retorna el texto."""
         wav_buffer = io.BytesIO()
         with wave.open(wav_buffer, 'wb') as wf:
             wf.setnchannels(CHANNELS)
             wf.setsampwidth(2)
             wf.setframerate(SAMPLE_RATE)
             wf.writeframes(audio_np.tobytes())
+
+        # Intentar Groq con las claves configuradas
+        groq_keys = [k for k in [GROQ_API_KEY_1, GROQ_API_KEY_2] if k]
+        for idx, groq_key in enumerate(groq_keys, start=1):
+            try:
+                wav_buffer.seek(0)
+                groq_response = requests.post(
+                    "https://api.groq.com/openai/v1/audio/transcriptions",
+                    headers={"Authorization": f"Bearer {groq_key}"},
+                    files={"file": ("dictado.wav", wav_buffer, "audio/wav")},
+                    data={"model": "whisper-large-v3-turbo"},
+                    timeout=5,
+                )
+                if groq_response.status_code == 200:
+                    result = groq_response.json()
+                    text = result.get("text", "").strip()
+                    if text:
+                        return text
+                else:
+                    log(f"Groq Key {idx} fallo ({groq_response.status_code}): {groq_response.text[:100]}.")
+            except Exception as e:
+                log(f"Error conectando a Groq API con Key {idx}: {e}.")
+                
+        if groq_keys:
+            log("Todas las claves de Groq fallaron. Usando servidor local de respaldo...")
+
+        # Fallback al servidor Faster-Whisper
         wav_buffer.seek(0)
+        try:
+            response = requests.post(
+                WHISPER_URL,
+                headers={
+                    "Authorization": f"Bearer {API_KEY}",
+                    "accept": "application/json",
+                },
+                files={"audio": ("dictado.wav", wav_buffer, "audio/wav")},
+                timeout=30,
+            )
 
-        response = requests.post(
-            WHISPER_URL,
-            headers={
-                "Authorization": f"Bearer {API_KEY}",
-                "accept": "application/json",
-            },
-            files={"audio": ("dictado.wav", wav_buffer, "audio/wav")},
-            timeout=30,
-        )
-
-        if response.status_code == 200:
-            result = response.json()
-            if isinstance(result, str):
-                return result.strip()
-            elif isinstance(result, dict):
-                return str(result.get("response", result.get("text", ""))).strip()
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, str):
+                    return result.strip()
+                elif isinstance(result, dict):
+                    return str(result.get("response", result.get("text", ""))).strip()
+                else:
+                    return str(result).strip()
+            elif response.status_code == 401:
+                log("ERROR: API KEY invalida!")
+                return None
             else:
-                return str(result).strip()
-        elif response.status_code == 401:
-            log("ERROR: API KEY invalida!")
-            return None
-        else:
-            log(f"ERROR servidor: {response.status_code}")
+                log(f"ERROR servidor: {response.status_code}")
+                return None
+        except Exception as e:
+            log(f"ERROR de conexion con servidor: {e}")
             return None
 
     def _inject_text_safe(self, text):
@@ -786,7 +820,8 @@ class TeoigoClient:
             "thank you.", "thank you", "suscribete", "subtitulos por la comunidad de amara.org",
             "gracias por ver el video.", "gracias por ver el video", "gracias por ver el video.", "gracias por ver el video",
             "gracias por ver.", "suscribete al canal", "suscribete al canal.", "suscribanse al canal",
-            "i'm so tired", "i'm so tired.", "i am so tired", "i am so tired.", "i'm so tired."
+            "i'm so tired", "i'm so tired.", "i am so tired", "i am so tired.", "i'm so tired.",
+            "ご視聴ありがとうございました。", "ご視聴ありがとうございました"
         ]
 
         # Verificar coincidencias exactas
