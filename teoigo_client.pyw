@@ -785,12 +785,20 @@ class TeoigoClient:
             "gracias", "gracias.", "gracias!", "gracias...", "muchas gracias.", "muchas gracias",
             "thank you.", "thank you", "suscribete", "subtitulos por la comunidad de amara.org",
             "gracias por ver el video.", "gracias por ver el video", "gracias por ver el video.", "gracias por ver el video",
-            "gracias por ver.", "suscribete al canal", "suscribete al canal.", "suscribanse al canal"
+            "gracias por ver.", "suscribete al canal", "suscribete al canal.", "suscribanse al canal",
+            "i'm so tired", "i'm so tired.", "i am so tired", "i am so tired.", "i'm so tired."
         ]
 
+        # Verificar coincidencias exactas
         if lower_text in alucinaciones:
             log(f"Ruido filtrado (alucinacion de Whisper): '{text}'")
             return
+
+        # Filtrar si la frase es solo repeticiones (ej. "I'm so tired. I'm so tired.")
+        for aluc in alucinaciones:
+            if len(aluc) > 5 and lower_text.replace(aluc, "").strip() == "":
+                log(f"Ruido repetitivo filtrado: '{text}'")
+                return
 
         log(f"Inyectando ({len(text)} chars)...")
 
@@ -809,7 +817,8 @@ class TeoigoClient:
             time.sleep(0.05)
             # pyautogui aveces necesita un mini delay adicional en Windows
             pyautogui.hotkey('ctrl', 'v')
-            time.sleep(0.05)
+            # 300ms de delay para apps Electron/Web (como Antigravity) que leen el clipboard asincronamente
+            time.sleep(0.3)
 
             try:
                 pyperclip.copy(original)
