@@ -1,160 +1,212 @@
-# Faster Whisper API + Cliente de Dictado — TEOIGO
+# TEOIGO v3.0 — Cliente de Dictado por Voz con Voice ID
 
-API de transcripción de audio usando [faster-whisper](https://github.com/SYSTRAN/faster-whisper) con FastAPI, protegida por API key y lista para desplegar en Dokploy.
+Cliente de escritorio para Windows que permite dictar texto por voz en **cualquier aplicación** (Word, VS Code, Chrome, etc.) usando inteligencia artificial para transcripción.
 
-**Incluye un cliente de escritorio para Windows** que permite dictar texto en cualquier aplicación.
-
-## Subdominio
-
-```
-https://teoigo.alianed.com
-```
+**Servidor backend:** faster-whisper vía FastAPI en Dokploy (Oracle Cloud).
 
 ---
 
-## Cliente de Dictado (Windows)
+## Novedades en v3.0
 
-El cliente de escritorio te permite dictar texto usando tu voz en **cualquier aplicación** (Word, Excel, VS Code, Chrome, Antigravity, etc.).
+| Feature | Descripción |
+|---|---|
+| 🎙️ **Voice ID** | Reconoce tu timbre de voz y filtra audio ajeno (TV, otras personas) |
+| 📡 **API Groq** | Transcripción en ~1.3s usando Whisper Large v3 Turbo |
+| 🔄 **Fallback automático** | Groq Key 1 → Groq Key 2 → Servidor Whisper |
+| 🎛️ **Modos de operación** | Dictado (solo tu voz) / General (todo audio) |
+| 🚦 **Telemetría visual** | 5 LEDs de semáforo en la píldora: Whisper, Mic, Voice ID, Groq, Final |
+| 📋 **Logs de diagnóstico** | Historial de 20 oraciones con estado de LEDs copiable al portapapeles |
+| ⚙️ **Config persistente** | `teoigo_config.json` — umbrales, keys, modos guardados entre reinicios |
+| 🗑️ **Perfil de voz** | Botón para eliminar/re-grabar perfil de voz desde menú tray |
 
-### Instalación (cero terminal)
+---
 
-1. **Doble-click en `INSTALL_TEOIGO.bat`**. Esto:
-   - Instala las dependencias (keyboard, sounddevice, pystray, etc.)
-   - Crea el icono "TEOIGO Dictado" en el escritorio
+## Instalación
+
+1. **Ejecutar `INSTALL_TEOIGO.bat`** (doble clic). Esto:
+   - Instala dependencias Python (keyboard, sounddevice, pystray, resemblyzer, etc.)
+   - Crea acceso directo "TEOIGO Dictado" en el escritorio
    - Configura inicio automático con Windows
 
-### Uso diario
+2. **Ejecutar desde el icono del escritorio** — sin terminal, sin comandos.
+
+---
+
+## Uso Diario
 
 | Atajo | Acción |
 |---|---|
 | `Ctrl + Flecha Derecha` | Encender micrófono y empezar a dictar |
 | `Ctrl + Flecha Izquierda` | Apagar micrófono |
-| Doble-click en icono de bandeja | Mostrar / ocultar la píldora |
+| Doble clic en icono de bandeja | Mostrar / ocultar píldora |
 | `Ctrl + Shift + F12` | Cerrar TEOIGO |
 
-### Comportamiento automático
-- Si pasan **3 min sin que hables** durante una grabación → la píldora se oculta (sigue grabando si vuelves a hablar).
-- Si pasan **5 min sin que uses la UI** → la píldora se minimiza sola a la bandeja.
-- Si pasan **10 min sin uso** → TEOIGO se apaga solo.
+### Menú del System Tray (clic derecho en el icono)
 
-### Flujo
-1. Doble-click en el icono del escritorio → TEOIGO arranca minimizado en bandeja
-2. Posicionas el cursor donde quieras escribir (Word, Chrome, etc.)
-3. Presionas **Ctrl + Flecha Derecha** → píldora azul con ondas de voz
-4. Hablas — el texto aparece automáticamente en la app activa
-5. Presionas **Ctrl + Flecha Izquierda** para apagar el micrófono
-
-> **Sin terminal nunca más.** Solo usas el icono del escritorio o el de la bandeja.
-
-### Configuración
-
-Edita las variables al inicio de `teoigo_client.pyw`:
-
-```python
-WHISPER_URL = "https://teoigo.alianed.com/v2/transcribe"
-API_KEY = "TU_API_KEY_AQUI"
+```
+┌──────────────────────────────────┐
+│ Mostrar/Ocultar Píldora          │
+│ Dictar (Ctrl+Right)              │
+│ ──────────────────────────────── │
+│ Modo ▸  ● Dictado                │
+│          ○ General               │
+│ 🎙️ Configurar Mi Voz            │
+│ 🗑️ Eliminar Perfil de Voz       │
+│ ──────────────────────────────── │
+│ Copiar Logs de Diagnóstico       │
+│ Limpiar Logs                     │
+│ ──────────────────────────────── │
+│ Auto-Actualizar al Reiniciar     │
+│ Reiniciar TEOIGO                 │
+│ Salir                            │
+│ └──────────────────────────────────┘
 ```
 
-O usa variables de entorno:
-```bash
-set TEOIGO_URL=https://teoigo.alianed.com/v2/transcribe
-set TEOIGO_API_KEY=tu_clave_secreta
+**Descripción de las opciones:**
+- **Mostrar/Ocultar Píldora**: Alterna la visibilidad del widget flotante (píldora).
+- **Dictar**: Activa el micrófono y comienza a grabar (equivalente a `Ctrl + Flecha Derecha`).
+- **Modo**: 
+  - *Dictado*: Solo transcribe tu voz, filtrando otros ruidos o voces usando Voice ID.
+  - *General*: Transcribe todo el audio capturado por el micrófono.
+- **Configurar Mi Voz**: Inicia el asistente para grabar y crear tu perfil de voz (`voice_profile.npy`).
+- **Eliminar Perfil de Voz**: Borra tu perfil de voz actual si deseas grabarlo nuevamente.
+- **Copiar Logs de Diagnóstico**: Copia al portapapeles el historial de las últimas transcripciones y el estado de la conexión.
+- **Limpiar Logs**: Borra el historial de diagnósticos actual.
+- **Auto-Actualizar al Reiniciar**: Activa o desactiva la actualización automática del código desde el repositorio de GitHub al reiniciar.
+- **Reiniciar TEOIGO**: Reinicia la aplicación limpiando cachés.
+- **Salir**: Cierra TEOIGO por completo.
+
+### Flujo de Dictado
+
+1. Abre TEOIGO desde el icono del escritorio → aparece en bandeja
+2. Posiciona el cursor donde quieras escribir (Word, Chrome, etc.)
+3. Presiona **Ctrl + Flecha Derecha** → píldora con ondas de voz
+4. Habla — texto aparece automáticamente donde está el cursor
+5. Presiona **Ctrl + Flecha Izquierda** para apagar
+
+---
+
+## Modos de Operación
+
+| Modo | Comportamiento | Voice ID |
+|---|---|---|
+| **Dictado** | Solo transcribe tu voz. Ignora TV, videos, otras personas | ✅ Activo |
+| **General** | Transcribe todo el audio que entra por el micrófono | ❌ Desactivado |
+
+---
+
+## Configuración de Voz (Voice ID)
+
+1. Clic derecho en icono de bandeja → **"Grabar Mi Voz"**
+2. Lee el párrafo guía durante 20 segundos variando tu tono (normal, suave, enérgico, rápido)
+3. TEOIGO genera un perfil de voz y lo guarda como `voice_profile.npy`
+4. En modo **Dictado**, solo transcribirá tu voz
+
+**Recomendación:** Varia tu tono durante la grabación — normal, bajo (oración), alto (predicación), y rápido — para que el modelo capte todo tu espectro vocal.
+
+---
+
+## Telemetría Visual (Píldora)
+
+La píldora muestra 5 LEDs tipo semáforo en la parte inferior:
+
+| LED | Significado | Estados |
+|---|---|---|
+| **S** (Whisper) | Servicio de transcripción | 🟡 standby → 🟢 enviando → 🔴 error |
+| **M** (Mic) | Micrófono | ⚫ apagado → 🟢 capturando |
+| **V** (Voice ID) | Verificación de voz | ⚫ inactivo → 🟡 verificando → 🟢 voz propia → 🔴 rechazada |
+| **G** (Groq) | API Groq | 🟡 esperando → 🟢 éxito → 🔴 falló |
+| **T** (Final) | Resultado del ciclo | ⚫ en proceso → 🟢 éxito → 🔴 abortado |
+
+---
+
+## Logs de Diagnóstico
+
+- El historial guarda las últimas 20 oraciones con el estado de cada LED
+- **Copiar Logs de Diagnóstico**: copia la tabla al portapapeles
+- **Limpiar Logs**: vacía el historial
+
+Ejemplo de salida:
+```
+=== TEOIGO v3.0 — Logs de Diagnóstico ===
+S=Whisper, M=Mic, V=VoiceID, G=Groq, T=Final
+--------------------------------------------------
+S:🟡, M:🟢, V:🟢, G:🟢, T:🟢 | 1.3s | "Bienaventurado el varón..."
 ```
 
 ---
 
-## Servidor (Backend API)
+## Comportamiento Automático
 
-### Variables de entorno
+- **3 min sin hablar** durante grabación → píldora se oculta (sigue grabando)
+- **5 min sin usar UI** → píldora se minimiza a bandeja
+- **30 min sin uso** → TEOIGO se cierra automáticamente
 
-Crea un archivo `.env` basado en `.env.example`:
+---
 
-```bash
-cp .env.example .env
+## Archivos de Configuración
+
+| Archivo | Propósito |
+|---|---|
+| `teoigo_config.json` | Config persistente (auto-generado). Contiene API keys, umbrales, modo activo |
+| `voice_profile.npy` | Embedding de voz del usuario (256 dimensiones) |
+| `teoigo.log` (en `%TEMP%`) | Log de ejecución |
+
+**Nunca compartas `teoigo_config.json`** — contiene tus API keys.
+
+---
+
+## Dependencias
+
+```
+keyboard, sounddevice, numpy, requests, pyperclip, pyautogui
+pystray, Pillow, resemblyzer, librosa, torch (CPU)
 ```
 
-```env
-MODEL_SIZE=small
-PORT=8080
-API_KEY=tu_clave_super_larga_y_random
-DEVICE=cpu
-COMPUTE_TYPE=int8
-ALLOWED_ORIGINS=*
-DISABLE_DOCS=false
-```
+Instaladas automáticamente por `INSTALL_TEOIGO.bat`.
 
-> **IMPORTANTE**: Nunca subas el archivo `.env` al repositorio. Solo `.env.example` está versionado.
+---
 
-### Ejecución local
+## Servidor Backend
 
-```bash
-docker compose up --build -d
-docker compose logs -f
-docker compose down
-```
+El servidor de transcripción usa [faster-whisper](https://github.com/SYSTRAN/faster-whisper) con FastAPI, desplegado en Dokploy (Oracle Cloud).
 
-### Desplegar en Dokploy
-
-1. Crea un nuevo servicio tipo **Docker Compose**
-2. Apunta al repo
-3. Configura las variables de entorno en Dokploy
-4. Dominio: `teoigo.alianed.com` → Puerto `8080`
-5. Deploy
-
-### Consumo de la API
-
-#### Health check (público)
-```bash
-curl https://teoigo.alianed.com/health
-```
-
-#### Transcripción (protegido)
-```bash
-curl -X POST \
-  'https://teoigo.alianed.com/v2/transcribe' \
-  -H 'Authorization: Bearer TU_API_KEY' \
-  -F 'audio=@tu_audio.ogg'
-```
+**Subdominio:** `https://teoigo.alianed.com`
 
 ### Endpoints
 
 | Método | Endpoint | Auth | Descripción |
-|--------|----------|------|-------------|
-| GET | `/` | No | UI web (demo) |
-| GET | `/health` | No | Health check para Dokploy |
-| POST | `/v2/transcribe` | Sí | Transcripción (texto plano) |
-| POST | `/transcribe` | Sí | Transcripción legacy (deprecated) |
-| GET | `/docs` | No | Swagger UI (desactivable) |
+|---|---|---|---|
+| GET | `/health` | No | Health check |
+| POST | `/v2/transcribe` | API Key | Transcripción de audio |
+| GET | `/docs` | No | Swagger UI |
+
+---
 
 ## Arquitectura
 
 ```
-┌────────────────────────────────────────────────┐
-│               TU PC (Windows)                    │
-│                                                  │
-│  teoigo_client.pyw                                │
-│  │                                                │
-│  ├─ Escucha Ctrl+Right (graba) / Ctrl+Left (para)          │
-│  ├─ Graba audio del micrófono                     │
-│  ├─ Envía audio a teoigo.alianed.com ────────────┐ │
-│  ├─ Recibe texto transcrito   ◄────────────────┘ │
-│  └─ Pega texto en app activa (Ctrl+V)              │
-│                                                  │
-│  Word │ Excel │ VS Code │ Chrome │ Antigravity    │
-└────────────────────────────────────────────────┘
-         │
-         ▼
-┌────────────────────────────────────────────────┐
-│           Dokploy (Oracle Cloud)                  │
-│                                                  │
-│  faster-whisper-fastapi                           │
-│  │                                                │
-│  ├─ /health        → PÚBLICO                      │
-│  ├─ /v2/transcribe → Bearer API_KEY               │
-│  └─ /transcribe    → Bearer API_KEY (deprecated)   │
-│                                                  │
-│  Volume: whisper-cache → HuggingFace             │
-└────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────┐
+│                   TU PC (Windows)                    │
+│                                                      │
+│  teoigo_client.pyw                                    │
+│  ├─ Escucha Ctrl+Right (graba) / Ctrl+Left (para)    │
+│  ├─ Graba audio del micrófono                         │
+│  ├─ Voice ID: verifica si es tu voz (Resemblyzer)     │
+│  ├─ Envía a Groq API ──────────────────────────────┐ │
+│  │   ├─ Groq Key 1 (Whisper Large v3 Turbo)        │ │
+│  │   ├─ Groq Key 2 (fallback)                      │ │
+│  │   └─ Servidor Whisper (fallback final)           │ │
+│  ├─ Recibe texto transcrito ◄──────────────────────┘ │
+│  └─ Pega texto en app activa (Ctrl+V)                │
+│                                                      │
+└──────────────────────────────────────────────────────┘
+         │                        │
+         ▼                        ▼
+┌─────────────────┐    ┌──────────────────────┐
+│   Groq Cloud    │    │  Dokploy (Oracle)    │
+│  (whisper-v3)   │    │  faster-whisper API  │
+└─────────────────┘    └──────────────────────┘
 ```
 
 ## Seguridad
